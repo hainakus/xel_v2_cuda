@@ -1,1 +1,1 @@
-nvcc -rdc=true -arch=compute_35 -code=sm_35 -Xcompiler -fPIC -shared -o libcuda_miner.so xelis-hash.cu
+nvcc -rdc=true -arch=compute_35 -code=sm_35 -Xcompiler -fPIC -shared -o libcuda_miner.so miner.cu xelis-hash.cu keccak.cu
