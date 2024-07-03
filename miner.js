@@ -1,19 +1,7 @@
 const StratumClient = require('./stratum');
-const ffi = require('ffi-napi');
-const ref = require('ref-napi');
+const cudaMiner = require('./cuda_miner');
 const BigNumber = require("bignumber.js");
-const uint8Array = ref.refType(ref.types.uint8);
-const uint32Array = ref.refType(ref.types.uint32);
 
-const libcuda_miner = ffi.Library('./libcuda_miner', {
-    'launch_mining_kernel': ['void', [uint8Array, uint32Array, 'int', 'int']],
-});
-
-function computeDifficultyTarget(difficulty) {
-    const diff = new BigNumber(difficulty);
-    const maxValue = new BigNumber(2).pow(256).minus(1); // 2^256 - 1
-    return maxValue.dividedBy(diff);
-}
 // Convert hex string to byte array
 function hexToBytes(hex) {
     const bytes = [];
@@ -38,6 +26,7 @@ function checkDifficultyAgainstTarget(hash, target) {
     console.log(target.toNumber())
     return hashWork.isLessThanOrEqualTo(target);
 }
+
 class Miner {
     constructor(host, port, username, password) {
         this.client = new StratumClient(host, port, username, password);
@@ -56,17 +45,24 @@ class Miner {
         input.write(coinbase1, 32, 'hex');
         input.write(coinbase2, 64, 'hex');
 
-        const output = new Array(numNonces * 8).fill(0); // Adjust size according to your hash output
+        const output = Buffer.alloc(numNonces * 32); // Adjust size according to your hash output
         console.log('Using GPU for mining...');
-        libcuda_miner.launch_mining_kernel(input, output, nonceStart, numNonces);
+        cudaMiner.initializeCuda(numNonces, 1);
+        const result = cudaMiner.xelisHashCuda(input, numNonces, output, 0);
+        cudaMiner.deinitializeCuda();
 
-        const difficultyTarget = computeDifficultyTarget(nBits.toString());
+        if (result !== 0) {
+            console.log('Mining failed:', result);
+            return;
+        }
+
+        const difficultyTarget = (nBits.toString());
         let validNonce = null;
         let validResult = null;
 
         for (let i = 0; i < numNonces; i++) {
-            const hash = output.slice(i * 8, (i + 1) * 8);
-            if (checkDifficultyAgainstTarget(hash, difficultyTarget)) {
+            const hash = output.slice(i * 32, (i + 1) * 32);
+            if (this.checkHashValidity(hash, difficultyTarget)) {
                 validNonce = nonceStart + i;
                 validResult = this.getHashResult(hash);
                 break;
@@ -81,7 +77,16 @@ class Miner {
         }
     }
 
-
+    checkHashValidity(hash, difficultyTarget) {
+        for (let i = 0; i < hash.length; i++) {
+            if (hash[i] > difficultyTarget[i]) {
+                return false;
+            } else if (hash[i] < difficultyTarget[i]) {
+                return true;
+            }
+        }
+        return true;
+    }
 
     getHashResult(hash) {
         return hash.toString('hex'); // Placeholder, replace with actual logic

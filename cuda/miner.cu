@@ -16,7 +16,7 @@ __global__ void mining_kernel(uint8_t *input, uint32_t *output, int nonce_start,
         data[79] = idx & 0xFF;
 
         // Compute hash
-        xelis_hash_kernel<<<1, 1>>>(data, output + idx * 8);
+        xelis_hash_cuda<<<1, 1>>>(data, output + idx * 8);
     }
 }
 

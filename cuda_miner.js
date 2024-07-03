@@ -3,31 +3,42 @@ const ref = require('ref-napi');
 
 const uint8Array = ref.refType(ref.types.uint8);
 const uint32Array = ref.refType(ref.types.uint32);
+const uint64 = ref.types.uint64;
 
 const libcuda_miner = ffi.Library('./libcuda_miner', {
-    'launch_mining_kernel': ['void', [uint8Array, uint32Array, 'int', 'int']],
-    'xelis_hash_cuda': ['void', [uint8Array, uint8Array]], // Add the function for hash validation
-    'compute_difficulty_target': ['uint32', ['string']] // Add the function for computing difficulty target
+    'initialize_cuda': ['int', ['size_t', 'int']],
+    'deinitialize_cuda': ['int', []],
+    'xelis_hash_cuda': ['int', [uint8Array, 'size_t', uint8Array, 'int']],
+    'xelis_hash_cuda_nonce': ['int', [uint8Array, 'pointer', 'size_t', uint8Array, 'pointer', uint8Array, 'int', 'int']]
 });
 
 module.exports = {
-    runMiningKernel: (input, output, nonceStart, numNonces) => {
-        const inputBuffer = Buffer.from(input);
-        const outputBuffer = Buffer.alloc(output.length * 4); // 4 bytes per uint32
-
-        libcuda_miner.launch_mining_kernel(inputBuffer, outputBuffer, nonceStart, numNonces);
-
-        for (let i = 0; i < output.length; i++) {
-            output[i] = outputBuffer.readUInt32LE(i * 4);
-        }
+    initializeCuda: (batchSize, numStates) => {
+        return libcuda_miner.initialize_cuda(batchSize, numStates);
     },
-    computeDifficultyTarget: (difficulty) => {
-        return libcuda_miner.compute_difficulty_target(difficulty);
+    deinitializeCuda: () => {
+        return libcuda_miner.deinitialize_cuda();
     },
-    validateHash: (input, output) => {
+    xelisHashCuda: (input, totalBatchSize, output, state) => {
         const inputBuffer = Buffer.from(input);
         const outputBuffer = Buffer.alloc(output.length);
-        libcuda_miner.xelis_hash_cuda(inputBuffer, outputBuffer);
-        return outputBuffer;
+
+        const result = libcuda_miner.xelis_hash_cuda(inputBuffer, totalBatchSize, outputBuffer, state);
+
+        outputBuffer.copy(output);
+        return result;
+    },
+    xelisHashCudaNonce: (baseHeader, nonceStart, batchSize, outputHash, outputNonce, difficulty, gpuId, state) => {
+        const baseHeaderBuffer = Buffer.from(baseHeader);
+        const nonceStartBuffer = ref.alloc('uint64', nonceStart);
+        const outputHashBuffer = Buffer.alloc(outputHash.length);
+        const outputNonceBuffer = ref.alloc('uint64', outputNonce);
+        const difficultyBuffer = Buffer.from(difficulty);
+
+        const result = libcuda_miner.xelis_hash_cuda_nonce(baseHeaderBuffer, nonceStartBuffer, batchSize, outputHashBuffer, outputNonceBuffer, difficultyBuffer, gpuId, state);
+
+        outputHashBuffer.copy(outputHash);
+        outputNonce[0] = outputNonceBuffer.deref();
+        return result;
     }
 };
