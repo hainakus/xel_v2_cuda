@@ -18,6 +18,11 @@ function fromBigEndian(bytes) {
     }
     return result;
 }
+function computeDifficultyTarget(difficulty) {
+    const diff = new BigNumber(difficulty);
+    const maxValue = new BigNumber(2).pow(256).minus(1); // 2^256 - 1
+    return maxValue.dividedBy(diff);
+}
 
 // Check if a given hash meets the target difficulty
 function checkDifficultyAgainstTarget(hash, target) {
@@ -56,7 +61,7 @@ class Miner {
             return;
         }
 
-        const difficultyTarget = (nBits.toString());
+        const difficultyTarget = computeDifficultyTarget(nBits.toString());
         let validNonce = null;
         let validResult = null;
 
